@@ -1,0 +1,100 @@
+---
+  - name: Install Clickhouse
+    hosts: clickhouse
+    handlers:
+      - name: Start clickhouse service
+        become: true
+        ansible.builtin.service:
+          name: clickhouse-server
+          state: restarted
+    tasks:
+      - block:
+          - name: Get clickhouse distrib
+            ansible.builtin.get_url:
+              url: "https://packages.clickhouse.com/rpm/stable/{{ item }}-{{ clickhouse_version }}.noarch.rpm"
+              dest: "./{{ item }}-{{ clickhouse_version }}.rpm"
+            with_items: "{{ clickhouse_packages }}"
+        rescue:
+          - name: Get clickhouse distrib
+            ansible.builtin.get_url:
+              url: "https://packages.clickhouse.com/rpm/stable/clickhouse-common-static-{{ clickhouse_version }}.x86_64.rpm"
+              dest: "./clickhouse-common-static-{{ clickhouse_version }}.rpm"
+      - name: Install clickhouse packages
+        become: true
+        ansible.builtin.yum:
+          name:
+            - clickhouse-common-static-{{ clickhouse_version }}.rpm
+            - clickhouse-client-{{ clickhouse_version }}.rpm
+            - clickhouse-server-{{ clickhouse_version }}.rpm
+        notify: Start clickhouse service
+
+
+  - name: Install Vector
+    hosts: vector  
+    tasks:    
+      - block:
+          - name: Get vector distrib
+            ansible.builtin.get_url:
+              url: "https://packages.timber.io/vector/0.21.0/vector-0.21.0-1.x86_64.rpm"
+              dest: "."
+        rescue:
+          - name: Get vector distrib
+            ansible.builtin.get_url:
+              url: "https://packages.timber.io/vector/0.21.0/vector-0.21.0-1.x86_64.rpm"
+              dest: "."
+      - block:
+          - name: Get libs1 distrib
+            ansible.builtin.get_url:
+              url: "http://mirror.ghettoforge.org/distributions/gf/el/7/gf/x86_64/gcc10-libstdc++-10.2.1-7.gf.el7.x86_64.rpm"
+              dest: "."
+      - name: Install lib1 package
+        become: true
+        ansible.builtin.yum:
+          name:
+            - gcc10-libstdc++-10.2.1-7.gf.el7.x86_64.rpm                   
+      - name: Install vector package
+        become: true
+        ansible.builtin.yum:
+          name:
+            - vector-0.21.0-1.x86_64.rpm  
+  - name: Install Lighthouse
+    hosts: lighthouse
+    tasks:    
+      - block:
+          - name: Install requements
+            become: true
+            ansible.builtin.yum:
+              name:
+                - git
+          - name: Inst nginx
+            become: true
+            ansible.builtin.yum:  
+              name:            
+                - epel-release
+          - name : Inst n1
+            become: true
+            ansible.builtin.yum:
+              name:            
+                - nginx
+          - name : test Iptables
+            become: true
+            ansible.builtin.command: iptables -F
+          - name : enable nginx
+            become: true
+            ansible.builtin.command: systemctl enable nginx 
+          - name : start web
+            become: true
+            ansible.builtin.command: systemctl start nginx
+      - name: Clone
+        become: true
+        ansible.builtin.git:
+          repo: https://github.com/VKCOM/lighthouse
+          dest: /usr/html
+      - name : remove old nginx data
+        become: true
+        ansible.builtin.command: rm -rf /usr/share/nginx/html
+      - name: copy new files
+        become : true
+        ansible.builtin.command: cp -r /usr/html /usr/share/nginx/html
+      - name : restart web
+        ansible.builtin.command: service nginx restart
